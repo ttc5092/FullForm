@@ -13,7 +13,7 @@ export default function Hero() {
           no ego lifting.
         </p>
         <div className="hero__actions">
-          <Button href="#start" variant="solid" size="lg">Start webcam</Button>
+          <Button href="#start" variant="solid" size="lg">Upload file</Button>
           <Button href="#how" variant="outline" size="lg">See how it works</Button>
         </div>
         <p className="hero__note">Runs in the browser. Your video never leaves your device.</p>
