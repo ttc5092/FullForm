@@ -6,7 +6,6 @@ export default function AnalysisModal({ open, onClose, videoUrl, warnings = [], 
     <div className="analysis-modal">
       <div className="analysis-modal__backdrop" onClick={onClose} />
       <div className="analysis-modal__panel" role="dialog" aria-modal="true">
-        <button className="analysis-modal__close" onClick={onClose} aria-label="Close">✕</button>
         <div className="analysis-modal__content">
           <div className="analysis-modal__video-wrap">
             <video src={videoUrl} controls autoPlay className="analysis-modal__video" />
