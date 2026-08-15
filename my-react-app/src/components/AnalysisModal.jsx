@@ -8,7 +8,7 @@ export default function AnalysisModal({ open, onClose, videoUrl, warnings = [], 
       <div className="analysis-modal__panel" role="dialog" aria-modal="true">
         <div className="analysis-modal__content">
           <div className="analysis-modal__video-wrap">
-            <video src={videoUrl} controls autoPlay className="analysis-modal__video" />
+            <video src={videoUrl} controls autoPlay muted className="analysis-modal__video" />
           </div>
           <div className="analysis-modal__details">
             <h3>Analysis</h3>
