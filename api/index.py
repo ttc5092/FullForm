@@ -4,19 +4,21 @@ from flask_cors import CORS
 import cv2
 import mediapipe as mp
 import numpy as np
+from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
 CORS(app)
 
-UPLOAD_FOLDER = 'uploads'
-OUTPUT_FOLDER = 'processed'
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-os.makedirs(OUTPUT_FOLDER, exist_ok=True)
+# Vercel ONLY allows writing to the /tmp folder
+UPLOAD_FOLDER = '/tmp'
+OUTPUT_FOLDER = '/tmp'
 
 # Try to initialize MediaPipe Pose; if unavailable, fall back to a no-op mode
 USE_MEDIAPIPE = True
 pose = None
 mp_drawing = None
+mp_pose = None  # Added global reference so it works inside functions
+
 try:
     mp_solutions = getattr(mp, 'solutions', None)
     if mp_solutions is not None:
@@ -24,7 +26,6 @@ try:
         pose = mp_pose.Pose(static_image_mode=False, model_complexity=1, min_detection_confidence=0.5)
         mp_drawing = mp.solutions.drawing_utils
     else:
-        # `mp.solutions` not available in this distribution
         raise Exception('mp.solutions not available')
 except Exception:
     USE_MEDIAPIPE = False
@@ -38,7 +39,6 @@ def calculate_angle(a, b, c):
     return 360.0 - angle if angle > 180.0 else angle
 
 def process_video_file(input_path, output_path, exercise_type):
-    # If MediaPipe is not available, perform a no-op: copy input to output and return no warnings
     if not USE_MEDIAPIPE:
         try:
             import shutil
@@ -48,14 +48,13 @@ def process_video_file(input_path, output_path, exercise_type):
             return ["Processing disabled: MediaPipe not available on the server."]
 
     cap = cv2.VideoCapture(input_path)
-    # Get original video details
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     fps = cap.get(cv2.CAP_PROP_FPS)
     if fps == 0 or not fps:
         fps = 30
 
-    # MP4V codec is widely supported in modern web browsers
+    # MP4V codec
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
 
@@ -70,17 +69,14 @@ def process_video_file(input_path, output_path, exercise_type):
         frame_idx += 1
         timestamp_sec = round(frame_idx / fps, 2)
 
-        # Color space conversion for AI processing
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         results = pose.process(rgb_frame)
 
         if results.pose_landmarks:
-            # Draw standard skeleton lines
             mp_drawing.draw_landmarks(frame, results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
             landmarks = results.pose_landmarks.landmark
 
             try:
-                # Dynamic analysis rules based on selected exercise
                 if exercise_type == "squats":
                     hip = [landmarks[mp_pose.PoseLandmark.LEFT_HIP.value].x * width, landmarks[mp_pose.PoseLandmark.LEFT_HIP.value].y * height]
                     knee = [landmarks[mp_pose.PoseLandmark.LEFT_KNEE.value].x * width, landmarks[mp_pose.PoseLandmark.LEFT_KNEE.value].y * height]
@@ -88,14 +84,13 @@ def process_video_file(input_path, output_path, exercise_type):
 
                     angle = calculate_angle(hip, knee, ankle)
 
-                    # Highlight bad form frames in bold red text on video
                     if angle > 100 and angle < 150:
                         cv2.putText(frame, "WARNING: SQUAT DEEPER!", (50, 80), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 0, 255), 3)
                         warnings.append(f"At {timestamp_sec}s: Squat depth insufficient (Knee angle: {int(angle)}°)")
 
                 elif exercise_type == "bicep_curls":
                     shoulder = [landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value].x * width, landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value].y * height]
-                    elbow = [landmarks[mp_pose.PoseLandmark.LEFT_ELBOW.value].x * width, landmarks[mp_pose.PoseLandmark.LEFT_ELBOW.value].y * height]
+                    elbow = [landmarks[mp_pose.PoseLandmark.LEFT_ELBOW.value].value * width if hasattr(landmarks[mp_pose.PoseLandmark.LEFT_ELBOW.value], 'x') else landmarks[mp_pose.PoseLandmark.LEFT_ELBOW.value].x * width, landmarks[mp_pose.PoseLandmark.LEFT_ELBOW.value].y * height]
                     wrist = [landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value].x * width, landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value].y * height]
 
                     angle = calculate_angle(shoulder, elbow, wrist)
@@ -111,10 +106,9 @@ def process_video_file(input_path, output_path, exercise_type):
     cap.release()
     out.release()
 
-    # Clean duplicate text logs to avoid thousands of repetitive warnings
     return list(dict.fromkeys(warnings))
 
-@app.route('/upload', methods=['POST'])
+@app.route('/api/upload', methods=['POST']) # Added /api/ prefix for Vercel routing
 def upload_video():
     if 'video' not in request.files:
         return jsonify({"error": "No video file provided"}), 400
@@ -122,23 +116,32 @@ def upload_video():
     file = request.files['video']
     exercise = request.form.get('exercise', 'squats')
     
-    input_path = os.path.join(UPLOAD_FOLDER, file.filename)
-    output_filename = f"processed_{file.filename}"
+    # Secure the filename to safely store in /tmp
+    safe_name = secure_filename(file.filename)
+    input_path = os.path.join(UPLOAD_FOLDER, safe_name)
+    output_filename = f"processed_{safe_name}"
     output_path = os.path.join(OUTPUT_FOLDER, output_filename)
     
     file.save(input_path)
     
-    # Heavy crunching engine runs here synchronously
     text_warnings = process_video_file(input_path, output_path, exercise)
     
+    # Clean up the original input video to save temporary space
+    if os.path.exists(input_path):
+        os.remove(input_path)
+    
+    # Use dynamic host URL instead of hardcoded localhost:5000
+    host_url = request.host_url.rstrip('/')
+    
     return jsonify({
-        "videoUrl": f"http://localhost:5000/download/{output_filename}",
+        "videoUrl": f"{host_url}/api/download/{output_filename}",
         "warnings": text_warnings
     })
 
-@app.route('/download/<filename>')
+@app.route('/api/download/<filename>') # Added /api/ prefix for Vercel routing
 def download_file(filename):
     return send_from_directory(OUTPUT_FOLDER, filename)
 
+# Vercel handles server execution automatically. This block is kept for local testing.
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=False)
