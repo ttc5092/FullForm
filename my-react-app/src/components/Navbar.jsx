@@ -14,7 +14,7 @@ export default function Navbar() {
     if (fileInputRef.current) fileInputRef.current.click()
   }
 
-  async function handleFileChange(e) {
+ async function handleFileChange(e) {
     const file = e.target.files && e.target.files[0]
     if (!file) return
 
@@ -24,7 +24,8 @@ export default function Navbar() {
       formData.append('video', file)
       formData.append('exercise', 'squats')
 
-      const response = await fetch('http://localhost:5000/upload', {
+      // CHANGED: Use a relative path with the '/api/' prefix for Vercel routing
+      const response = await fetch('/api/upload', {
         method: 'POST',
         body: formData,
       })
@@ -44,7 +45,8 @@ export default function Navbar() {
       setAnalysisOpen(true)
     } catch (error) {
       console.error('Upload analysis error:', error)
-      alert('Upload failed. Please make sure the backend is running on localhost:5000 and the video is valid.')
+      // CHANGED: Generic alert message since it will no longer look for localhost:5000 in production
+      alert('Upload failed. Please make sure the video is valid and the server is responsive.')
     } finally {
       setUploading(false)
       e.target.value = ''
