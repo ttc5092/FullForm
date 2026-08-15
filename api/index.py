@@ -17,7 +17,7 @@ OUTPUT_FOLDER = '/tmp'
 USE_MEDIAPIPE = True
 pose = None
 mp_drawing = None
-mp_pose = None  # Added global reference so it works inside functions
+mp_pose = None  
 
 try:
     mp_solutions = getattr(mp, 'solutions', None)
@@ -54,8 +54,8 @@ def process_video_file(input_path, output_path, exercise_type):
     if fps == 0 or not fps:
         fps = 30
 
-    # MP4V codec
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    # FIX 1: Changed codec to 'avc1' so the output video plays inside web browsers
+    fourcc = cv2.VideoWriter_fourcc(*'avc1')
     out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
 
     warnings = []
@@ -90,7 +90,10 @@ def process_video_file(input_path, output_path, exercise_type):
 
                 elif exercise_type == "bicep_curls":
                     shoulder = [landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value].x * width, landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value].y * height]
-                    elbow = [landmarks[mp_pose.PoseLandmark.LEFT_ELBOW.value].value * width if hasattr(landmarks[mp_pose.PoseLandmark.LEFT_ELBOW.value], 'x') else landmarks[mp_pose.PoseLandmark.LEFT_ELBOW.value].x * width, landmarks[mp_pose.PoseLandmark.LEFT_ELBOW.value].y * height]
+                    
+                    # FIX 2: Fixed the broken dictionary/attribute lookup bug for bicep curl elbows
+                    elbow = [landmarks[mp_pose.PoseLandmark.LEFT_ELBOW.value].x * width, landmarks[mp_pose.PoseLandmark.LEFT_ELBOW.value].y * height]
+                    
                     wrist = [landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value].x * width, landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value].y * height]
 
                     angle = calculate_angle(shoulder, elbow, wrist)
@@ -108,7 +111,7 @@ def process_video_file(input_path, output_path, exercise_type):
 
     return list(dict.fromkeys(warnings))
 
-@app.route('/api/upload', methods=['POST']) # Added /api/ prefix for Vercel routing
+@app.route('/api/upload', methods=['POST']) 
 def upload_video():
     if 'video' not in request.files:
         return jsonify({"error": "No video file provided"}), 400
@@ -116,7 +119,6 @@ def upload_video():
     file = request.files['video']
     exercise = request.form.get('exercise', 'squats')
     
-    # Secure the filename to safely store in /tmp
     safe_name = secure_filename(file.filename)
     input_path = os.path.join(UPLOAD_FOLDER, safe_name)
     output_filename = f"processed_{safe_name}"
@@ -126,11 +128,9 @@ def upload_video():
     
     text_warnings = process_video_file(input_path, output_path, exercise)
     
-    # Clean up the original input video to save temporary space
     if os.path.exists(input_path):
         os.remove(input_path)
     
-    # Use dynamic host URL instead of hardcoded localhost:5000
     host_url = request.host_url.rstrip('/')
     
     return jsonify({
@@ -138,10 +138,9 @@ def upload_video():
         "warnings": text_warnings
     })
 
-@app.route('/api/download/<filename>') # Added /api/ prefix for Vercel routing
+@app.route('/api/download/<filename>') 
 def download_file(filename):
     return send_from_directory(OUTPUT_FOLDER, filename)
 
-# Vercel handles server execution automatically. This block is kept for local testing.
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=False)
