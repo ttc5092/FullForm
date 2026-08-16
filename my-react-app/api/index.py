@@ -10,8 +10,8 @@ app = Flask(__name__)
 CORS(app)
 
 # Vercel ONLY allows writing to the /tmp folder
-UPLOAD_FOLDER = '/tmp'
-OUTPUT_FOLDER = '/tmp'
+UPLOAD_FOLDER = '/tmp/uploads'
+OUTPUT_FOLDER = '/tmp/processed'
 
 # Try to initialize MediaPipe Pose; if unavailable, fall back to a no-op mode
 USE_MEDIAPIPE = True
