@@ -1,6 +1,7 @@
 import os
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
+import gunicorn
 import cv2
 import mediapipe as mp
 import numpy as np
